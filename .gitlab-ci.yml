@@ -112,10 +112,14 @@ push_redis_to_acr:
   before_script:
     - docker login $ACR_URL -u $ARM_CLIENT_ID -p $ARM_CLIENT_SECRET
   script:
+    #Authenticate to dhi to download hardened image
+    docker login dhi.io -u $DHI_USERNAME -p $DHI_PASSWORD
     # Pull official Redis image and re-tag for ACR
-    - docker pull redis:8-debian13-dev
-    - docker tag redis:8-debian13-dev $ACR_URL/redis:8-debian13-dev
+    - docker pull dhi.io/redis:8-debian13-dev
+    - docker tag dhi.io/redis:8-debian13-dev $ACR_URL/redis:8-debian13-dev
     - docker push $ACR_URL/redis:8-debian13-dev
+    #Logout from dhi
+    docker logout dhi.io
   after_script:
     - docker logout $ACR_URL
 
@@ -148,6 +152,8 @@ deploy_to_aks:
   rules:
     - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
   before_script:
+    # Install dependencies 
+    - tdnf install -y tar git
     # Install kubectl and helm
     - az aks install-cli
     - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
