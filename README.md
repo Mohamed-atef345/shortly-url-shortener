@@ -1,93 +1,257 @@
-# shortly-url-shortner
+# Shortly — URL Shortener
 
+A production-grade URL shortener deployed on **Azure Kubernetes Service** with a full DevOps pipeline.
 
+> **Domain**: [myshortly.tech](http://myshortly.tech)
 
-## Getting started
+---
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-* [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+## Architecture
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/Mohamed_Atef_Abdo/shortly-url-shortner.git
-git branch -M main
-git push -uf origin main
+Developer → GitLab CI (Build, Test, Scan) → Azure Container Registry
+                                                      │
+                                                      ▼
+                                              Azure Kubernetes Service
+                                           ┌─────────────────────────┐
+                                           │  NGINX Ingress          │
+                                           │  ┌───────┐ ┌─────────┐  │
+                                           │  │  /api │ │    /    │  │
+                                           │  └───┬───┘ └────┬────┘  │
+                                           │      ▼          ▼       │
+                                           │  Backend    Frontend    │
+                                           │  (Elysia)   (Next.js)   │
+                                           │      │                  │
+                                           │      ▼                  │
+                                           │    Redis                │
+                                           └──────┼──────────────────┘
+                                                  │
+                                                  ▼
+                                           MongoDB Atlas (External)
 ```
 
-## Integrate with your tools
+---
 
-* [Set up project integrations](https://gitlab.com/Mohamed_Atef_Abdo/shortly-url-shortner/-/settings/integrations)
+## Tech Stack
 
-## Collaborate with your team
+### Application
 
-* [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+| Component    | Technology                           |
+| ------------ | ------------------------------------ |
+| **Backend**  | Bun + Elysia (TypeScript)            |
+| **Frontend** | Next.js 16, React 19, Tailwind CSS 4 |
+| **Database** | MongoDB Atlas                        |
+| **Cache**    | Redis (in-cluster)                   |
+| **Auth**     | JWT + bcrypt, RBAC                   |
 
-## Test and Deploy
+### DevOps
 
-Use the built-in continuous integration in GitLab.
+| Category               | Tool                           | Status         |
+| ---------------------- | ------------------------------ | -------------- |
+| **Cloud Provider**     | Azure                          | ✅ Implemented |
+| **Container Registry** | Azure Container Registry (ACR) | ✅ Implemented |
+| **Kubernetes**         | Azure Kubernetes Service (AKS) | ✅ Implemented |
+| **IaC**                | Terraform                      | ✅ Implemented |
+| **CI/CD (Build)**      | GitLab CI                      | ✅ Implemented |
+| **Package Manager**    | Helm                           | ✅ Implemented |
+| **Secrets**            | Bitnami Sealed Secrets         | ✅ Implemented |
+| **Ingress**            | NGINX Ingress Controller       | ✅ Implemented |
+| **HPA**                | Horizontal Pod Autoscaler      | ✅ Implemented |
+| **CI/CD (GitOps)**     | ArgoCD                         | 🔄 In Progress |
+| **Monitoring**         | Prometheus + Grafana           | 🔄 In Progress |
+| **Security Scanning**  | Trivy                          | 🔄 In Progress |
+| **TLS**                | cert-manager + Let's Encrypt   | 🔄 In Progress |
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+---
 
-***
+## Project Structure
 
-# Editing this README
+```
+shortly_url_shortener/
+├── backend/                    # Bun + Elysia REST API
+│   ├── Dockerfile              # Multi-stage build (test → prod)
+│   ├── src/
+│   │   ├── index.ts            # App entrypoint + Swagger spec
+│   │   ├── config/             # DB, Redis, env config
+│   │   ├── controllers/        # Admin controller
+│   │   ├── middleware/          # Auth, RBAC, rate-limit, security
+│   │   ├── models/             # Mongoose models (User, Url)
+│   │   ├── routes/             # Auth, URL CRUD, redirect, admin
+│   │   ├── services/           # Redis, shortcode, URL services
+│   │   └── tests/              # Unit tests
+│   └── package.json
+│
+├── frontend/                   # Next.js 16 app
+│   ├── Dockerfile              # Multi-stage build with build-args
+│   ├── src/
+│   │   ├── app/                # Pages (auth, dashboard, admin, redirect)
+│   │   ├── components/         # UI components (shadcn/ui)
+│   │   ├── lib/                # API client, config, utils
+│   │   └── providers/          # Auth, Query, Theme providers
+│   └── package.json
+│
+├── DevOps/
+│   ├── terraform/              # Azure infrastructure
+│   │   ├── provider.tf         # AzureRM provider + remote backend
+│   │   ├── main.tf             # AKS, ACR, node pools, role assignment
+│   │   ├── variables.tf        # K8s version, VM size, OS SKU
+│   │   └── outputs.tf          # Cluster name, ACR URL, kubeconfig
+│   │
+│   └── k8s/shorly/             # Helm chart
+│       ├── Chart.yaml
+│       ├── values.yaml         # Image tags, replicas, resources, ingress
+│       └── templates/
+│           ├── backend_deployment.yaml
+│           ├── frontend_deployment.yaml
+│           ├── redis.yaml
+│           ├── service.yaml    # ClusterIP services (frontend, backend, redis)
+│           ├── ingress.yaml    # NGINX ingress (/api → backend, / → frontend)
+│           ├── HPA.yaml        # Autoscaling (2–5 pods, CPU/memory triggers)
+│           └── sealed-secret.yaml
+│
+└── .gitlab-ci.yml              # CI/CD pipeline
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+---
 
-## Suggestions for a good README
+## Backend API
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+| Endpoint                         | Method | Auth   | Description              |
+| -------------------------------- | ------ | ------ | ------------------------ |
+| `/health`                        | GET    | —      | Health check (+ Redis)   |
+| `/swagger`                       | GET    | —      | Swagger UI               |
+| `/api/auth/register`             | POST   | —      | Register user            |
+| `/api/auth/login`                | POST   | —      | Login (returns JWT)      |
+| `/api/auth/me`                   | GET    | Bearer | Current user profile     |
+| `/api/auth/delete-account`       | DELETE | Bearer | Delete account           |
+| `/api/urls`                      | POST   | Bearer | Create short URL         |
+| `/api/urls`                      | GET    | Bearer | List user's URLs         |
+| `/api/urls/:shortCode/analytics` | GET    | Bearer | URL click analytics      |
+| `/api/urls/:shortCode`           | DELETE | Bearer | Delete URL               |
+| `/:shortCode`                    | GET    | —      | Redirect to original URL |
 
-## Name
-Choose a self-explaining name for your project.
+---
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+## Infrastructure
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+### Terraform Resources
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+| Resource              | Config                                                |
+| --------------------- | ----------------------------------------------------- |
+| **Resource Group**    | `shortly-prod`, West Europe                           |
+| **AKS Cluster**       | Standard tier, OIDC enabled, system-assigned identity |
+| **Default Node Pool** | Autoscale 1–2 nodes, 3 AZs, `Standard_D2ads_v7`       |
+| **Worker Node Pool**  | Autoscale 1–6 nodes, 3 AZs, User mode                 |
+| **ACR**               | Standard SKU, `AcrPull` role assigned to AKS kubelet  |
+| **TF State Backend**  | Azure Storage Account (`shortlytfstate/tfstate`)      |
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+### Kubernetes Resources
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+- **Deployments**: Backend (2 replicas), Frontend (2 replicas), Redis (1 replica)
+- **Services**: ClusterIP for all three
+- **Ingress**: NGINX — routes `/api` to backend, `/` to frontend on `myshortly.tech`
+- **HPA**: Frontend & backend scale 2→5 pods on CPU (60%) or memory (70%)
+- **Sealed Secrets**: All env vars encrypted with Bitnami Sealed Secrets
+- **Probes**: Liveness & readiness on all deployments
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+---
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+## CI/CD Pipeline (GitLab CI)
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+### Stages
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+```
+test  →  infra  →  build  →  deploy
+```
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+### Jobs
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+| Job                       | Stage  | Trigger                       | Description                                           |
+| ------------------------- | ------ | ----------------------------- | ----------------------------------------------------- |
+| `test_frontend`           | test   | `frontend/**` changes         | `bun install` → `bun run lint` → `bun run typecheck`  |
+| `test_backend`            | test   | `backend/**` changes          | `bun install` → `bun test` → `lint` → `typecheck`     |
+| `infra_plan`              | infra  | `DevOps/terraform/**` changes | `terraform plan`                                      |
+| `infra_apply`             | infra  | `DevOps/terraform/**` changes | `terraform apply` (needs `infra_plan`)                |
+| `build_and_push_backend`  | build  | `backend/**` changes          | Docker build → push to ACR (`:$SHA` + `:latest`)      |
+| `build_and_push_frontend` | build  | `frontend/**` changes         | Docker build with `NEXT_PUBLIC_*` args → push to ACR  |
+| `push_redis_to_acr`       | build  | Manual                        | Mirror `redis:8-debian13-dev` to ACR                  |
+| `deploy_to_aks`           | deploy | Main branch only              | Helm upgrade + NGINX Ingress + Sealed Secrets install |
+
+### Pipeline Triggers
+
+- Runs on **merge requests** and **main branch** pushes
+- Jobs are scoped by path — only affected services are built/tested
+- Infrastructure jobs only run when `DevOps/terraform/` files change
+
+---
+
+## Roadmap (In Progress)
+
+### ArgoCD (GitOps) 🔄
+
+- Install ArgoCD on AKS
+- Connect to GitLab repository
+- Create ArgoCD Application pointing to Helm chart
+- Configure auto-sync with self-heal and auto-prune
+- Separate CI (GitLab) from CD (ArgoCD)
+
+### Monitoring (Prometheus + Grafana) 🔄
+
+- Deploy `kube-prometheus-stack` via Helm
+- Kubernetes cluster & node dashboards
+- Application-level metrics
+- AlertManager integration
+
+### Security Scanning (Trivy) 🔄
+
+- Add Trivy scan stage to GitLab CI after image build
+- Fail pipeline on CRITICAL vulnerabilities
+- Generate scan reports as pipeline artifacts
+
+### TLS / HTTPS 🔄
+
+- Install cert-manager on AKS
+- Configure Let's Encrypt ClusterIssuer
+- Add TLS to Ingress for `myshortly.tech`
+
+---
+
+## Local Development
+
+```bash
+# Backend
+cd backend
+bun install
+bun run dev          # http://localhost:3002
+
+# Frontend
+cd frontend
+bun install
+bun run dev          # http://localhost:3000
+```
+
+---
+
+## Environment Variables
+
+Managed via **Sealed Secrets** in the cluster. Key variables:
+
+| Variable               | Description                     |
+| ---------------------- | ------------------------------- |
+| `MONGODB_URI`          | MongoDB Atlas connection string |
+| `JWT_SECRET`           | JWT signing secret              |
+| `JWT_EXPIRES_IN`       | Token expiry                    |
+| `REDIS_URL`            | Redis connection URL            |
+| `REDIS_PASSWORD`       | Redis auth password             |
+| `REDIS_ENABLED`        | Enable/disable Redis cache      |
+| `FRONTEND_URL`         | CORS origin                     |
+| `NEXT_PUBLIC_API_URL`  | Backend URL for frontend        |
+| `NEXT_PUBLIC_BASE_URL` | Base URL for short links        |
+| `PORT`                 | Backend port (3002)             |
+| `NODE_ENV`             | Environment (production)        |
+
+---
 
 ## License
-For open source projects, say how it is licensed.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+MIT

@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.backend.name }}-deployment
+  labels:
+    app: {{ .Values.backend.name }}
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.backend.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.backend.name }}
+    spec:
+      containers:
+        - name: {{ .Values.backend.name }}
+          image: {{ .Values.backend.image }}:{{ .Values.backend.tag }}
+          ports:
+            - containerPort: {{ .Values.backend.port }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secrets.name_application }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.backend.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.backend.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:          
+              memory: {{ .Values.backend.resources.requests.memory | quote }}
+              cpu: {{ .Values.backend.resources.requests.cpu | quote }}
+            limits:
+              memory: {{ .Values.backend.resources.limits.memory | quote }}
+              cpu: {{ .Values.backend.resources.limits.cpu | quote }}
+          imagePullPolicy: IfNotPresent
+

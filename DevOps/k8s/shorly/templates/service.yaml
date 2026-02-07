@@ -1,0 +1,45 @@
+#frontend service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.frontend.name }}-service
+spec:
+  selector:
+    app: {{ .Values.frontend.name }}
+  ports:
+    - protocol: TCP
+      port: {{ .Values.service.frontend_port }}
+      targetPort: {{ .Values.frontend.port }}
+  type: ClusterIP
+
+---
+
+#backend service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.backend.name }}-service
+spec:
+  selector:
+    app: {{ .Values.backend.name }}
+  ports:
+    - protocol: TCP
+      port: {{ .Values.service.backend_port }}
+      targetPort: {{ .Values.backend.port }}
+  type: ClusterIP
+
+---
+#redis service
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.redis.name }}-service
+spec:
+  selector:
+    app: {{ .Values.redis.name }}
+  ports:
+    - protocol: TCP
+      port: {{ .Values.service.redis_port }}
+      targetPort: {{ .Values.redis.port }}
+  type: ClusterIP
+
