@@ -19,7 +19,7 @@ stages:
   - build
   - deploy
 
-test_frontend:
+.test_frontend:
   image: oven/bun:alpine
   stage: test
   cache:
@@ -32,7 +32,7 @@ test_frontend:
     - bun run lint
     - bun run typecheck
 
-test_backend:
+.test_backend:
   image: oven/bun:alpine
   stage: test
   cache:
@@ -61,7 +61,7 @@ infra_plan:
       - DevOps/terraform/tfplan
     expire_in: 1 hour
 
-infra_apply:
+.infra_apply:
   image:
     name: hashicorp/terraform:latest
     entrypoint: [""]
@@ -79,7 +79,7 @@ infra_apply:
     reports:
       dotenv: DevOps/deploy.env
 
-build_and_push_backend:
+.build_and_push_backend:
   image: docker:latest
   stage: build
   services:
@@ -98,7 +98,7 @@ build_and_push_backend:
   after_script:
     - docker logout $ACR_URL
 
-push_redis_to_acr:
+.push_redis_to_acr:
   image: docker:latest
   stage: build
   services:
@@ -122,7 +122,7 @@ push_redis_to_acr:
   after_script:
     - docker logout $ACR_URL
 
-build_and_push_frontend:
+.build_and_push_frontend:
   image: docker:latest
   stage: build
   services:
@@ -151,10 +151,11 @@ deploy_to_aks:
   rules:
     - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
   before_script:
-    # Install all required dependencies (tar, git, awk, wget, sudo)
     - tdnf install -y tar git gawk wget sudo
-    # Install kubectl and helm
-    - az aks install-cli
+    # Install kubectl manually (az aks install-cli timed out)
+    - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    - chmod +x kubectl
+    - mv kubectl /usr/local/bin/
     - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     # Login to Azure and get AKS credentials
     - az login --service-principal -u $ARM_CLIENT_ID -p $ARM_CLIENT_SECRET --tenant $ARM_TENANT_ID

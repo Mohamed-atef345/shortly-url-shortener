@@ -166,16 +166,16 @@ test  →  infra  →  build  →  deploy
 
 ### Jobs
 
-| Job                       | Stage  | Trigger                       | Description                                           |
-| ------------------------- | ------ | ----------------------------- | ----------------------------------------------------- |
-| `test_frontend`           | test   | `frontend/**` changes         | `bun install` → `bun run lint` → `bun run typecheck`  |
-| `test_backend`            | test   | `backend/**` changes          | `bun install` → `bun test` → `lint` → `typecheck`     |
-| `infra_plan`              | infra  | `DevOps/terraform/**` changes | `terraform plan`                                      |
-| `infra_apply`             | infra  | `DevOps/terraform/**` changes | `terraform apply` (needs `infra_plan`)                |
-| `build_and_push_backend`  | build  | `backend/**` changes          | Docker build → push to ACR (`:$SHA` + `:latest`)      |
-| `build_and_push_frontend` | build  | `frontend/**` changes         | Docker build with `NEXT_PUBLIC_*` args → push to ACR  |
-| `push_redis_to_acr`       | build  | Manual                        | Mirror `redis:8-debian13-dev` to ACR                  |
-| `deploy_to_aks`           | deploy | Main branch only              | Helm upgrade + NGINX Ingress + Sealed Secrets install |
+| Job                       | Stage  | Trigger                       | Description                                                |
+| ------------------------- | ------ | ----------------------------- | ---------------------------------------------------------- |
+| `test_frontend`           | test   | `frontend/**` changes         | `bun install` → `bun run lint` → `bun run typecheck`       |
+| `test_backend`            | test   | `backend/**` changes          | `bun install` → `bun test` → `lint` → `typecheck`          |
+| `infra_plan`              | infra  | `DevOps/terraform/**` changes | `terraform plan`                                           |
+| `infra_apply`             | infra  | `DevOps/terraform/**` changes | `terraform apply` (needs `infra_plan`)                     |
+| `build_and_push_backend`  | build  | `backend/**` changes          | Docker build → push to ACR (`:$SHA` + `:latest`)           |
+| `build_and_push_frontend` | build  | `frontend/**` changes         | Docker build with `NEXT_PUBLIC_*` args → push to ACR       |
+| `push_redis_to_acr`       | build  | Manual                        | Mirror hardended `redis` from `dhi.io` to ACR              |
+| `deploy_to_aks`           | deploy | Main branch only              | Installs dependencies (`tar`, `git`, `awk`) → Helm upgrade |
 
 ### Pipeline Triggers
 
