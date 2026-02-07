@@ -107,7 +107,6 @@ push_redis_to_acr:
     DOCKER_TLS_CERTDIR: ""
   rules:
     - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
-      when: manual
       allow_failure: true
   before_script:
     - docker login $ACR_URL -u $ARM_CLIENT_ID -p $ARM_CLIENT_SECRET
@@ -152,8 +151,8 @@ deploy_to_aks:
   rules:
     - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
   before_script:
-    # Install dependencies (tar and git are missing in Azure Linux base image)
-    - tdnf install -y tar git
+    # Install all required dependencies (tar, git, awk, wget, sudo)
+    - tdnf install -y tar git gawk wget sudo
     # Install kubectl and helm
     - az aks install-cli
     - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
