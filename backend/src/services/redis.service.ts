@@ -21,7 +21,7 @@ const TTL = {
  * Redis Cache Service
  * Provides caching, rate limiting, and buffering capabilities
  */
-export class RedisService {
+export const RedisService = {
 	/**
 	 * ========================
 	 * URL CACHING (for fast redirects)
@@ -31,7 +31,7 @@ export class RedisService {
 	/**
 	 * Cache a URL mapping (shortCode -> originalUrl)
 	 */
-	static async cacheUrl(
+	async cacheUrl(
 		shortCode: string,
 		originalUrl: string,
 		ttlSeconds?: number,
@@ -44,13 +44,13 @@ export class RedisService {
 			console.error("Redis cacheUrl error:", error);
 			// Fail silently - MongoDB is the source of truth
 		}
-	}
+	},
 
 	/**
 	 * Get cached URL by shortCode
 	 * Returns null if not found or Redis unavailable
 	 */
-	static async getCachedUrl(shortCode: string): Promise<string | null> {
+	async getCachedUrl(shortCode: string): Promise<string | null> {
 		try {
 			const redis = getRedis();
 			const key = `${CACHE_PREFIX.URL}${shortCode}`;
@@ -59,12 +59,12 @@ export class RedisService {
 			console.error("Redis getCachedUrl error:", error);
 			return null; // Fallback to MongoDB
 		}
-	}
+	},
 
 	/**
 	 * Invalidate URL cache (when URL is updated or deleted)
 	 */
-	static async invalidateUrlCache(shortCode: string): Promise<void> {
+	async invalidateUrlCache(shortCode: string): Promise<void> {
 		try {
 			const redis = getRedis();
 			const key = `${CACHE_PREFIX.URL}${shortCode}`;
@@ -72,7 +72,7 @@ export class RedisService {
 		} catch (error) {
 			console.error("Redis invalidateUrlCache error:", error);
 		}
-	}
+	},
 
 	/**
 	 * ========================
@@ -85,7 +85,7 @@ export class RedisService {
 	 * Uses sliding window algorithm
 	 * Returns: { allowed: boolean, remaining: number, resetTime: number }
 	 */
-	static async checkRateLimit(
+	async checkRateLimit(
 		identifier: string,
 		maxRequests: number = config.rateLimitMaxRequests,
 		windowMs: number = config.rateLimitWindowMs,
@@ -139,7 +139,7 @@ export class RedisService {
 				resetTime: Date.now() + windowMs,
 			};
 		}
-	}
+	},
 
 	/**
 	 * ========================
@@ -150,7 +150,7 @@ export class RedisService {
 	/**
 	 * Buffer a click event for batch processing
 	 */
-	static async bufferClick(
+	async bufferClick(
 		shortCode: string,
 		clickData: {
 			ip?: string;
@@ -175,12 +175,12 @@ export class RedisService {
 			console.error("Redis bufferClick error:", error);
 			// Fail silently - clicks can be lost in worst case
 		}
-	}
+	},
 
 	/**
 	 * Flush buffered clicks for a shortCode (returns and clears buffer)
 	 */
-	static async flushClickBuffer(shortCode: string): Promise<
+	async flushClickBuffer(shortCode: string): Promise<
 		Array<{
 			ip?: string;
 			userAgent?: string;
@@ -210,12 +210,12 @@ export class RedisService {
 			console.error("Redis flushClickBuffer error:", error);
 			return [];
 		}
-	}
+	},
 
 	/**
 	 * Get buffered click count (quick stats without full flush)
 	 */
-	static async getBufferedClickCount(shortCode: string): Promise<number> {
+	async getBufferedClickCount(shortCode: string): Promise<number> {
 		try {
 			const redis = getRedis();
 			const count = await redis.get(
@@ -225,7 +225,7 @@ export class RedisService {
 		} catch {
 			return 0;
 		}
-	}
+	},
 
 	/**
 	 * ========================
@@ -236,7 +236,7 @@ export class RedisService {
 	/**
 	 * Blacklist a JWT token (for logout)
 	 */
-	static async blacklistToken(
+	async blacklistToken(
 		token: string,
 		expiresInSeconds?: number,
 	): Promise<void> {
@@ -247,12 +247,12 @@ export class RedisService {
 		} catch (error) {
 			console.error("Redis blacklistToken error:", error);
 		}
-	}
+	},
 
 	/**
 	 * Check if a token is blacklisted
 	 */
-	static async isTokenBlacklisted(token: string): Promise<boolean> {
+	async isTokenBlacklisted(token: string): Promise<boolean> {
 		try {
 			const redis = getRedis();
 			const key = `${CACHE_PREFIX.TOKEN_BLACKLIST}${token}`;
@@ -262,7 +262,7 @@ export class RedisService {
 			console.error("Redis isTokenBlacklisted error:", error);
 			return false; // On failure, don't block valid tokens
 		}
-	}
+	},
 
 	/**
 	 * ========================
@@ -273,14 +273,14 @@ export class RedisService {
 	/**
 	 * Check if Redis is available
 	 */
-	static async isAvailable(): Promise<boolean> {
+	async isAvailable(): Promise<boolean> {
 		return isRedisHealthy();
-	}
+	},
 
 	/**
 	 * Clear all cache (for testing/maintenance)
 	 */
-	static async clearAll(): Promise<void> {
+	async clearAll(): Promise<void> {
 		try {
 			const redis = getRedis();
 			const keys = await redis.keys("url:*");
@@ -290,7 +290,7 @@ export class RedisService {
 		} catch (error) {
 			console.error("Redis clearAll error:", error);
 		}
-	}
-}
+	},
+};
 
 export default RedisService;

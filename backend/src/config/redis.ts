@@ -1,4 +1,4 @@
-import Redis from "ioredis";
+import Redis, { type RedisOptions } from "ioredis";
 import config from "./index";
 
 let redis: Redis | null = null;
@@ -8,7 +8,7 @@ let redis: Redis | null = null;
  */
 export const getRedis = (): Redis => {
 	if (!redis) {
-		const options: any = {
+		const options: RedisOptions = {
 			maxRetriesPerRequest: 3,
 			enableReadyCheck: true,
 			retryStrategy: (times: number) => {
@@ -56,8 +56,9 @@ export const connectRedis = async (): Promise<void> => {
 		// Just ping to verify connection
 		await client.ping();
 		console.log("✅ Redis ping successful");
-	} catch (error: any) {
-		console.error("Failed to connect to Redis:", error.message);
+	} catch (error: unknown) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.error("Failed to connect to Redis:", message);
 		// Don't throw - allow app to work without Redis (graceful degradation)
 	}
 };

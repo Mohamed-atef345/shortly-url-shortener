@@ -1,7 +1,7 @@
 import { jwt } from "@elysiajs/jwt";
 import { Elysia, t } from "elysia";
 import config from "../config";
-import { type IUser, User } from "../models";
+import { type IUrl, type IUser, User } from "../models";
 import { UrlService } from "../services";
 
 /**
@@ -9,7 +9,7 @@ import { UrlService } from "../services";
  */
 async function verifyAuth(
 	authHeader: string | undefined,
-	jwtVerify: (token: string) => Promise<any>,
+	jwtVerify: (token: string) => Promise<Record<string, unknown> | false>,
 ): Promise<{ user: IUser | null; error: string | null }> {
 	if (!authHeader?.startsWith("Bearer ")) {
 		return { user: null, error: "Unauthorized: No token provided" };
@@ -74,11 +74,13 @@ export const urlRoutes = new Elysia({ prefix: "/api/urls" })
 						createdAt: url.createdAt,
 					},
 				};
-			} catch (err: any) {
+			} catch (err: unknown) {
 				set.status = 400;
+				const message =
+					err instanceof Error ? err.message : "Failed to create URL";
 				return {
 					success: false,
-					error: err.message || "Failed to create URL",
+					error: message,
 				};
 			}
 		},
@@ -118,7 +120,7 @@ export const urlRoutes = new Elysia({ prefix: "/api/urls" })
 			return {
 				success: true,
 				data: {
-					urls: result.urls.map((url: any) => ({
+					urls: result.urls.map((url: IUrl) => ({
 						_id: url._id,
 						shortCode: url.shortCode,
 						shortUrl: `${config.baseUrl}/${url.shortCode}`,
