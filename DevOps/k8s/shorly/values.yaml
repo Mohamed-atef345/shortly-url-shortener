@@ -1,0 +1,53 @@
+backend:
+  name: shortly-backend
+  image: shortly-backend
+  tag: latest #if not overrided by the pipeline
+  replicas: 2
+  port: 3002
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "250m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+
+frontend:
+  name: shortly-frontend
+  image: shortly-frontend
+  tag: latest #if not overrided by the pipeline
+  replicas: 2
+  port: 3000
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "250m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+redis:
+  name: shortly-redis
+  image: shortlyacr.azurecr.io/redis
+  tag: 8-debian13-dev
+  replicas: 1
+  port: 6379
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "250m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+
+service:
+  frontend_port: 80
+  backend_port: 80
+  redis_port: 6379
+
+ingress:
+  name: nginx
+  domain: myshortly.tech
+  tls_secret: shortly-tls
+
+secrets:
+  name_application: shortly-secrets
