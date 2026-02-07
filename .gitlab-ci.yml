@@ -1,0 +1,211 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
+
+variables:
+  COMMIT_SHA: $CI_COMMIT_SHORT_SHA
+  CACHE_KEY: $CI_COMMIT_REF_SLUG
+
+  ACR_NAME: "shortlyacr"
+  ACR_URL: "shortlyacr.azurecr.io"
+  RESOURCE_GROUP: "shortly-prod"
+  CLUSTER_NAME: "shortly-aks"
+  DOMAIN: "myshortly.tech"
+
+stages:
+  - test
+  - infra
+  - build
+  - deploy
+
+test_frontend:
+  image: oven/bun:alpine
+  stage: test
+  cache:
+    key: $CACHE_KEY
+    paths:
+      - frontend/node_modules
+  script:
+    - cd frontend
+    - bun install
+    - bun run lint
+    - bun run typecheck
+
+test_backend:
+  image: oven/bun:alpine
+  stage: test
+  cache:
+    key: $CACHE_KEY
+    paths:
+      - backend/node_modules
+  script:
+    - cd backend
+    - bun install
+    - bun test
+    - bun run lint
+    - bun run typecheck
+
+infra_plan:
+  image:
+    name: hashicorp/terraform:latest
+    entrypoint: [""]
+  stage: infra
+  before_script:
+    - cd DevOps/terraform
+    - terraform init -backend-config="access_key=$TF_STATE_ACCESS_KEY"
+  script:
+    - terraform plan -out=tfplan
+  artifacts:
+    paths:
+      - DevOps/terraform/tfplan
+    expire_in: 1 hour
+
+infra_apply:
+  image:
+    name: hashicorp/terraform:latest
+    entrypoint: [""]
+  stage: infra
+  needs: [infra_plan]
+  before_script:
+    - cd DevOps/terraform
+    - terraform init -backend-config="access_key=$TF_STATE_ACCESS_KEY"
+  script:
+    - terraform apply -auto-approve tfplan
+    - echo "ACR_URL=$(terraform output -raw shortlyacr_url)" >> ../deploy.env
+    - echo "RESOURCE_GROUP=$(terraform output -raw resource_group_name)" >> ../deploy.env
+    - echo "CLUSTER_NAME=$(terraform output -raw kubernetes_cluster_name)" >> ../deploy.env
+  artifacts:
+    reports:
+      dotenv: DevOps/deploy.env
+
+build_and_push_backend:
+  image: docker:latest
+  stage: build
+  services:
+    - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    # Login to ACR using service principal credentials
+    - docker login $ACR_URL -u $ARM_CLIENT_ID -p $ARM_CLIENT_SECRET
+  script:
+    # Build image
+    - docker build -t $ACR_URL/shortly-backend:$COMMIT_SHA -t $ACR_URL/shortly-backend:latest ./backend
+    # Push both tags (commit SHA for rollback + latest for convenience)
+    - docker push $ACR_URL/shortly-backend:$COMMIT_SHA
+    - docker push $ACR_URL/shortly-backend:latest
+  after_script:
+    - docker logout $ACR_URL
+
+push_redis_to_acr:
+  image: docker:latest
+  stage: build
+  services:
+    - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+  rules:
+    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
+      when: manual
+      allow_failure: true
+  before_script:
+    - docker login $ACR_URL -u $ARM_CLIENT_ID -p $ARM_CLIENT_SECRET
+  script:
+    # Pull official Redis image and re-tag for ACR
+    - docker pull redis:8-debian13-dev
+    - docker tag redis:8-debian13-dev $ACR_URL/redis:8-debian13-dev
+    - docker push $ACR_URL/redis:8-debian13-dev
+  after_script:
+    - docker logout $ACR_URL
+
+build_and_push_frontend:
+  image: docker:latest
+  stage: build
+  services:
+    - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - docker login $ACR_URL -u $ARM_CLIENT_ID -p $ARM_CLIENT_SECRET
+  script:
+    # Build with NEXT_PUBLIC_* baked in at build time
+    - >
+      docker build
+      --build-arg NEXT_PUBLIC_API_URL=http://$DOMAIN
+      --build-arg NEXT_PUBLIC_BASE_URL=http://$DOMAIN
+      -t $ACR_URL/shortly-frontend:$COMMIT_SHA
+      -t $ACR_URL/shortly-frontend:latest
+      ./frontend
+    - docker push $ACR_URL/shortly-frontend:$COMMIT_SHA
+    - docker push $ACR_URL/shortly-frontend:latest
+  after_script:
+    - docker logout $ACR_URL
+
+deploy_to_aks:
+  image: mcr.microsoft.com/azure-cli:latest
+  stage: deploy
+  rules:
+    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
+  before_script:
+    # Install kubectl and helm
+    - az aks install-cli
+    - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    # Login to Azure and get AKS credentials
+    - az login --service-principal -u $ARM_CLIENT_ID -p $ARM_CLIENT_SECRET --tenant $ARM_TENANT_ID
+    - az aks get-credentials --resource-group $RESOURCE_GROUP --name $CLUSTER_NAME --overwrite-existing
+  script:
+    # Install NGINX Ingress Controller
+    - |
+      if ! helm list -n ingress-nginx | grep -q ingress-nginx; then
+        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+        helm repo update
+        helm install ingress-nginx ingress-nginx/ingress-nginx \
+          --create-namespace \
+          --namespace ingress-nginx \
+          --set controller.replicaCount=1 \
+          --set controller.nodeSelector."kubernetes\.io/os"=linux
+      fi
+    # Install Sealed Secrets Controller (apply sealing key before first install)
+    - |
+      if ! helm list -n kube-system | grep -q sealed-secrets; then
+        kubectl apply -f $SEALED_SECRETS_KEY
+        helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
+        helm repo update
+        helm install sealed-secrets sealed-secrets/sealed-secrets \
+          --namespace kube-system \
+          --set-string fullnameOverride=sealed-secrets-controller
+      fi
+    # Deploy the application with Helm
+    - >
+      helm upgrade --install shortly ./DevOps/k8s/shorly
+      --set backend.image=$ACR_URL/shortly-backend
+      --set backend.tag=$COMMIT_SHA
+      --set frontend.image=$ACR_URL/shortly-frontend
+      --set frontend.tag=$COMMIT_SHA
+      --set redis.image=$ACR_URL/redis
+      --set redis.tag=8-debian13-dev
+    # Verify deployment
+    - kubectl rollout status deployment/shortly-backend-deployment --timeout=120s
+    - kubectl rollout status deployment/shortly-frontend-deployment --timeout=120s
+    # Show summary
+    - kubectl get pods
+    - kubectl get svc
+    - kubectl get ingress
+    # Get the public IP address of the Ingress Controller
+    - |
+      echo "============================================"
+      echo "  Waiting for Ingress External IP..."
+      echo "============================================"
+      for i in $(seq 1 30); do
+        EXTERNAL_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+        if [ -n "$EXTERNAL_IP" ] && [ "$EXTERNAL_IP" != "" ]; then
+          break
+        fi
+        echo "  Attempt $i/30 — waiting..."
+        sleep 10
+      done
+      echo "============================================"
+      echo "  PUBLIC IP: $EXTERNAL_IP"
+      echo "  Point The DNS A record for $DOMAIN → $EXTERNAL_IP"
+      echo "============================================"
