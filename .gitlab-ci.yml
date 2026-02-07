@@ -19,7 +19,7 @@ stages:
   - build
   - deploy
 
-.test_frontend:
+test_frontend:
   image: oven/bun:alpine
   stage: test
   cache:
@@ -32,7 +32,7 @@ stages:
     - bun run lint
     - bun run typecheck
 
-.test_backend:
+test_backend:
   image: oven/bun:alpine
   stage: test
   cache:
@@ -61,7 +61,7 @@ infra_plan:
       - DevOps/terraform/tfplan
     expire_in: 1 hour
 
-.infra_apply:
+infra_apply:
   image:
     name: hashicorp/terraform:latest
     entrypoint: [""]
@@ -79,7 +79,7 @@ infra_plan:
     reports:
       dotenv: DevOps/deploy.env
 
-.build_and_push_backend:
+build_and_push_backend:
   image: docker:latest
   stage: build
   services:
@@ -98,7 +98,7 @@ infra_plan:
   after_script:
     - docker logout $ACR_URL
 
-.push_redis_to_acr:
+push_redis_to_acr:
   image: docker:latest
   stage: build
   services:
@@ -122,7 +122,7 @@ infra_plan:
   after_script:
     - docker logout $ACR_URL
 
-.build_and_push_frontend:
+build_and_push_frontend:
   image: docker:latest
   stage: build
   services:
