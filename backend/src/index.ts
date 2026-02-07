@@ -310,7 +310,13 @@ const app = new Elysia()
 		}
 
 		// Handle other errors
-		const status = (error as any).status || 500;
+		let status = 500;
+		if (error && typeof error === "object" && "status" in error) {
+			const s = (error as Record<string, unknown>).status;
+			if (typeof s === "number") {
+				status = s;
+			}
+		}
 		set.status = status;
 
 		return {

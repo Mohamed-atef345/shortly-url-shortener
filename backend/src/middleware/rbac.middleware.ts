@@ -1,4 +1,4 @@
-import { Elysia } from "elysia";
+import { type Context, Elysia } from "elysia";
 import { type IUser, UserRole } from "../models";
 
 /**
@@ -7,7 +7,7 @@ import { type IUser, UserRole } from "../models";
  */
 export const requireRole = (...allowedRoles: UserRole[]) => {
 	return new Elysia({ name: `rbac-${allowedRoles.join("-")}` }).derive(
-		({ user, set }: { user?: IUser; set: any }) => {
+		({ user, set }: { user?: IUser; set: Context["set"] }) => {
 			if (!user) {
 				set.status = 401;
 				throw new Error("Unauthorized: Authentication required");
