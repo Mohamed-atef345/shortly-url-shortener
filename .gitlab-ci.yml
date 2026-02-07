@@ -154,8 +154,10 @@ deploy_to_aks:
     - tdnf install -y tar git gawk wget sudo
     # Install kubectl manually (az aks install-cli timed out)
     - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-    - chmod +x kubectl
-    - mv kubectl /usr/local/bin/
+    # Validate
+    - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl.sha256"
+    - sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+    - kubectl version --client
     - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     # Login to Azure and get AKS credentials
     - az login --service-principal -u $ARM_CLIENT_ID -p $ARM_CLIENT_SECRET --tenant $ARM_TENANT_ID
