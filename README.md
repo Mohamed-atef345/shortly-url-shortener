@@ -251,7 +251,3 @@ Managed via **Sealed Secrets** in the cluster. Key variables:
 | `NODE_ENV`             | Environment (production)        |
 
 ---
-
-## License
-
-MIT
