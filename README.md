@@ -164,24 +164,23 @@ shortly_url_shortener/
 test  →  infra  →  build  →  deploy
 ```
 
+### Workflow Rules
+
+- Runs for **merge request pipelines**
+- Runs for **default branch** pushes
+
 ### Jobs
 
-| Job                       | Stage  | Trigger                       | Description                                                |
-| ------------------------- | ------ | ----------------------------- | ---------------------------------------------------------- |
-| `test_frontend`           | test   | `frontend/**` changes         | `bun install` → `bun run lint` → `bun run typecheck`       |
-| `test_backend`            | test   | `backend/**` changes          | `bun install` → `bun test` → `lint` → `typecheck`          |
-| `infra_plan`              | infra  | `DevOps/terraform/**` changes | `terraform plan`                                           |
-| `infra_apply`             | infra  | `DevOps/terraform/**` changes | `terraform apply` (needs `infra_plan`)                     |
-| `build_and_push_backend`  | build  | `backend/**` changes          | Docker build → push to ACR (`:$SHA` + `:latest`)           |
-| `build_and_push_frontend` | build  | `frontend/**` changes         | Docker build with `NEXT_PUBLIC_*` args → push to ACR       |
-| `push_redis_to_acr`       | build  | Manual                        | Mirror hardended `redis` from `dhi.io` to ACR              |
-| `deploy_to_aks`           | deploy | Main branch only              | Installs dependencies (`tar`, `git`, `awk`) → Helm upgrade |
-
-### Pipeline Triggers
-
-- Runs on **merge requests** and **main branch** pushes
-- Jobs are scoped by path — only affected services are built/tested
-- Infrastructure jobs only run when `DevOps/terraform/` files change
+| Job                         | Stage  | Rules/Notes                          | Description                                                                 |
+| --------------------------- | ------ | ------------------------------------ | --------------------------------------------------------------------------- |
+| `test_frontend`             | test   | Template job                         | `bun install` → `bun run lint` → `bun run typecheck` in `frontend/`         |
+| `test_backend`              | test   | Template job                         | `bun install` → `bun test` → `bun run lint` → `bun run typecheck` in `backend/` |
+| `infra_plan`                | infra  | Always (per workflow rules)          | `terraform plan -out=tfplan` in `DevOps/terraform/`                         |
+| `infra_apply`               | infra  | Template job, needs `infra_plan`     | `terraform apply` then exports outputs to `DevOps/deploy.env` (dotenv)      |
+| `build_and_push_backend`    | build  | Template job                         | Docker build → push to ACR (`:$COMMIT_SHA` + `:latest`)                     |
+| `build_and_push_frontend`   | build  | Template job                         | Docker build with `NEXT_PUBLIC_*` args → push to ACR                         |
+| `push_redis_to_acr`         | build  | Default branch only, allow_failure   | Mirror hardened `redis` from `dhi.io` to ACR                                |
+| `deploy_to_aks`             | deploy | Default branch only                  | Azure CLI login → install `kubectl`/Helm → ingress/sealed-secrets → Helm upgrade |
 
 ---
 
