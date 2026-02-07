@@ -153,9 +153,11 @@ deploy_to_aks:
   before_script:
     - tdnf install -y tar git gawk wget sudo
     # Install kubectl manually (az aks install-cli timed out)
-    - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    - K8S_VERSION="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"
+    - if [ -z "$K8S_VERSION" ]; then echo "Failed to resolve Kubernetes version"; exit 1; fi
+    - curl -fL -o kubectl "https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/amd64/kubectl"
     # Validate
-    - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl.sha256"
+    - curl -fL -o kubectl.sha256 "https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/amd64/kubectl.sha256"
     - sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
     - kubectl version --client
     - curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
