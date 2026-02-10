@@ -241,4 +241,17 @@ Managed via **Sealed Secrets** in the cluster. Key variables:
 | `PORT`                 | Backend port (3002)             |
 | `NODE_ENV`             | Environment (production)        |
 
----
+## Screenshots
+
+### Homepage
+
+![Homepage](Output/homepage.png)
+
+### Grafana Monitoring
+
+![Grafana Dashboard - Cluster Overview](Output/grafana1.png)
+![Grafana Dashboard - Pod Metrics](Output/grafana2.png)
+
+### Demo
+
+## [🎬 Watch the demo video](Output/Demo.mp4)
