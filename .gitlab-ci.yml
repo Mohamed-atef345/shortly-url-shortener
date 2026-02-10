@@ -149,7 +149,7 @@ build_and_push_frontend:
 
 scan_backend:
   image:
-    name: aquasecurity/trivy:latest
+    name: $CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX/aquasecurity/trivy:latest
     entrypoint: [""]
   stage: scan
   variables:
@@ -175,7 +175,7 @@ scan_backend:
 
 scan_frontend:
   image:
-    name: aquasecurity/trivy:latest
+    name: $CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX/aquasecurity/trivy:latest
     entrypoint: [""]
   stage: scan
   variables:
