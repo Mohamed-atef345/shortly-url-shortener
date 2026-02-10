@@ -208,7 +208,7 @@ deploy_to_aks:
     - tdnf install -y tar git gawk wget sudo
     # Install kubectl — try dynamic version, fall back to pinned version
     - KUBECTL_FALLBACK_VERSION="v1.35.0"
-    - K8S_VERSION="$(curl -fsSL --retry 3 --retry-delay 5 https://dl.k8s.io/release/stable.txt || true)"
+    - K8S_VERSION="$(curl -fsSL --max-time 5 https://dl.k8s.io/release/stable.txt || true)"
     - if [ -z "$K8S_VERSION" ]; then echo "Upstream version endpoint unavailable, using fallback $KUBECTL_FALLBACK_VERSION"; K8S_VERSION="$KUBECTL_FALLBACK_VERSION"; fi
     - echo "Installing kubectl $K8S_VERSION"
     - curl -fL --retry 3 -o kubectl "https://dl.k8s.io/release/${K8S_VERSION}/bin/linux/amd64/kubectl"
@@ -249,6 +249,15 @@ deploy_to_aks:
           --namespace kube-system \
           --set-string fullnameOverride=sealed-secrets-controller
       fi
+    # Install Prometheus and Grafana
+    - |
+      helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+      helm repo update
+      helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+        --namespace monitoring \
+        --create-namespace \
+        -f ./DevOps/k8s/prometheus-stack-values.yaml \
+        --set grafana.adminPassword=$GRAFANA_ADMIN_PASSWORD
     # Deploy the application with Helm
     - >
       helm upgrade --install shortly ./DevOps/k8s/shorly
