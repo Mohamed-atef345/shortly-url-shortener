@@ -11,7 +11,7 @@ variables:
   ACR_URL: "shortlyacr.azurecr.io"
   RESOURCE_GROUP: "shortly-prod"
   CLUSTER_NAME: "shortly-aks"
-  DOMAIN: "https://myshortly.tech"
+  DOMAIN: "myshortly.tech"
 
 stages:
   - test
