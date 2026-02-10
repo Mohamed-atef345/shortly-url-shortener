@@ -59,7 +59,7 @@ resource "azurerm_role_assignment" "aks_acr_pull" {
 
 resource "azurerm_public_ip" "ingress" {
   name                = "shortly-ingress-ip"
-  resource_group_name = azurerm_kubernetes_cluster.shortly-aks.node_resource_group
+  resource_group_name = azurerm_resource_group.shortly.name
   location            = azurerm_resource_group.shortly.location
   allocation_method   = "Static"
   sku                 = "Standard"
