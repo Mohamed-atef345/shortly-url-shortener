@@ -1,0 +1,6 @@
+controller:
+  replicaCount: 1
+  nodeSelector:
+    kubernetes.io/os: linux
+  service:
+    externalTrafficPolicy: Local

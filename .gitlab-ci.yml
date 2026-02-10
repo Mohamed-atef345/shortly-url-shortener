@@ -11,7 +11,7 @@ variables:
   ACR_URL: "shortlyacr.azurecr.io"
   RESOURCE_GROUP: "shortly-prod"
   CLUSTER_NAME: "shortly-aks"
-  DOMAIN: "myshortly.tech"
+  DOMAIN: "https://myshortly.tech"
 
 stages:
   - test
@@ -75,6 +75,7 @@ infra_apply:
     - echo "ACR_URL=$(terraform output -raw shortlyacr_url)" >> ../deploy.env
     - echo "RESOURCE_GROUP=$(terraform output -raw resource_group_name)" >> ../deploy.env
     - echo "CLUSTER_NAME=$(terraform output -raw kubernetes_cluster_name)" >> ../deploy.env
+    - echo "INGRESS_STATIC_IP=$(terraform output -raw ingress_ip)" >> ../deploy.env
   artifacts:
     reports:
       dotenv: DevOps/deploy.env
@@ -167,15 +168,24 @@ deploy_to_aks:
   script:
     # Install NGINX Ingress Controller
     - |
-      if ! helm list -n ingress-nginx | grep -q ingress-nginx; then
-        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-        helm repo update
-        helm install ingress-nginx ingress-nginx/ingress-nginx \
-          --create-namespace \
-          --namespace ingress-nginx \
-          --set controller.replicaCount=1 \
-          --set controller.nodeSelector."kubernetes\.io/os"=linux
-      fi
+      helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+      helm repo update
+      helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+        --create-namespace \
+        --namespace ingress-nginx \
+        -f ./DevOps/k8s/nginx-ingress-values.yaml \
+        --set controller.service.loadBalancerIP=$INGRESS_STATIC_IP
+    # Install cert-manager for TLS certificate management
+    - |
+      curl -LO https://cert-manager.io/public-keys/cert-manager-keyring-2021-09-20-1020CF3C033D4F35BAE1C19E1226061C665DF13E.gpg
+      helm upgrade --install \
+      cert-manager oci://quay.io/jetstack/charts/cert-manager \
+      --version v1.19.2 \
+      --namespace cert-manager \
+      --create-namespace \
+      --verify \
+      --keyring ./cert-manager-keyring-2021-09-20-1020CF3C033D4F35BAE1C19E1226061C665DF13E.gpg \
+      --set crds.enabled=true
     # Install Sealed Secrets Controller (apply sealing key before first install)
     - |
       if ! helm list -n kube-system | grep -q sealed-secrets; then
@@ -195,6 +205,7 @@ deploy_to_aks:
       --set frontend.tag=$COMMIT_SHA
       --set redis.image=$ACR_URL/redis
       --set redis.tag=8-debian13-dev
+      --set clusterIssuer.acmeEmail=$ACMEEMAIL
     # Verify deployment
     - kubectl rollout status deployment/shortly-backend-deployment --timeout=120s
     - kubectl rollout status deployment/shortly-frontend-deployment --timeout=120s
@@ -202,20 +213,9 @@ deploy_to_aks:
     - kubectl get pods
     - kubectl get svc
     - kubectl get ingress
-    # Get the public IP address of the Ingress Controller
+    # Show the static IP for DNS configuration
     - |
       echo "============================================"
-      echo "  Waiting for Ingress External IP..."
-      echo "============================================"
-      for i in $(seq 1 30); do
-        EXTERNAL_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
-        if [ -n "$EXTERNAL_IP" ] && [ "$EXTERNAL_IP" != "" ]; then
-          break
-        fi
-        echo "  Attempt $i/30 — waiting..."
-        sleep 10
-      done
-      echo "============================================"
-      echo "  PUBLIC IP: $EXTERNAL_IP"
-      echo "  Point The DNS A record for $DOMAIN → $EXTERNAL_IP"
+      echo "  STATIC IP: $INGRESS_STATIC_IP"
+      echo "  Point The DNS A record for $DOMAIN → $INGRESS_STATIC_IP"
       echo "============================================"
