@@ -60,8 +60,8 @@ Developer → GitLab CI (Test, Build, Scan) → Azure Container Registry
 | **Security Scanning**  | Trivy                          | ✅ Implemented |
 | **TLS**                | cert-manager + Let's Encrypt   | ✅ Implemented |
 | **Static IP**          | Terraform-managed Public IP    | ✅ Implemented |
+| **Monitoring**         | Prometheus + Grafana           | ✅ Implemented |
 | **CI/CD (GitOps)**     | ArgoCD                         | 🔄 In Progress |
-| **Monitoring**         | Prometheus + Grafana           | 🔄 In Progress |
 
 ---
 
@@ -99,7 +99,8 @@ shortly_url_shortener/
 │   │   └── outputs.tf          # Cluster name, ACR URL, kubeconfig, static IP
 │   │
 │   └── k8s/
-│       ├── nginx-ingress-values.yaml  # NGINX Ingress Controller config
+│       ├── nginx-ingress-values.yaml      # NGINX Ingress Controller config
+│       ├── prometheus-stack-values.yaml   # Prometheus + Grafana config
 │       └── shorly/             # Application Helm chart
 │           ├── Chart.yaml
 │           ├── values.yaml     # Image tags, replicas, resources, ingress, TLS
@@ -157,6 +158,7 @@ shortly_url_shortener/
 - **Ingress**: NGINX — routes `/api` to backend, `/` to frontend on `myshortly.tech`
 - **TLS**: cert-manager + Let's Encrypt (auto-provisioned & auto-renewed)
 - **ClusterIssuer**: Let's Encrypt production with HTTP-01 solver
+- **Monitoring**: Prometheus + Grafana at [grafana.myshortly.tech](https://grafana.myshortly.tech) with TLS
 - **HPA**: Frontend & backend scale 2→5 pods on CPU (60%) or memory (70%)
 - **Sealed Secrets**: All env vars encrypted with Bitnami Sealed Secrets
 - **Probes**: Liveness & readiness on all deployments
@@ -178,18 +180,18 @@ test  →  infra  →  build  →  scan  →  deploy
 
 ### Jobs
 
-| Job                       | Stage  | Rules/Notes                        | Description                                                                                   |
-| ------------------------- | ------ | ---------------------------------- | --------------------------------------------------------------------------------------------- |
-| `test_frontend`           | test   | Template job                       | `bun install` → `bun run lint` → `bun run typecheck` in `frontend/`                           |
-| `test_backend`            | test   | Template job                       | `bun install` → `bun test` → `bun run lint` → `bun run typecheck` in `backend/`               |
-| `infra_plan`              | infra  | Always (per workflow rules)        | `terraform plan -out=tfplan` in `DevOps/terraform/`                                           |
-| `infra_apply`             | infra  | Template job, needs `infra_plan`   | `terraform apply` then exports outputs to `DevOps/deploy.env` (dotenv)                        |
-| `build_and_push_backend`  | build  | Template job                       | Docker build → push to ACR (`:$COMMIT_SHA` + `:latest`)                                       |
-| `build_and_push_frontend` | build  | Template job                       | Docker build with `NEXT_PUBLIC_*` args → push to ACR                                          |
-| `push_redis_to_acr`       | build  | Default branch only, allow_failure | Mirror hardened `redis` from `dhi.io` to ACR                                                  |
-| `scan_backend`            | scan   | Template job                       | Trivy scan for CRITICAL vulns → JSON report artifact                                          |
-| `scan_frontend`           | scan   | Template job                       | Trivy scan for CRITICAL vulns → JSON report artifact                                          |
-| `deploy_to_aks`           | deploy | Default branch only                | Azure CLI login → install `kubectl`/Helm → ingress/cert-manager/sealed-secrets → Helm upgrade |
+| Job                       | Stage  | Rules/Notes                        | Description                                                                     |
+| ------------------------- | ------ | ---------------------------------- | ------------------------------------------------------------------------------- |
+| `test_frontend`           | test   | Template job                       | `bun install` → `bun run lint` → `bun run typecheck` in `frontend/`             |
+| `test_backend`            | test   | Template job                       | `bun install` → `bun test` → `bun run lint` → `bun run typecheck` in `backend/` |
+| `infra_plan`              | infra  | Always (per workflow rules)        | `terraform plan -out=tfplan` in `DevOps/terraform/`                             |
+| `infra_apply`             | infra  | Template job, needs `infra_plan`   | `terraform apply` then exports outputs to `DevOps/deploy.env` (dotenv)          |
+| `build_and_push_backend`  | build  | Template job                       | Docker build → push to ACR (`:$COMMIT_SHA` + `:latest`)                         |
+| `build_and_push_frontend` | build  | Template job                       | Docker build with `NEXT_PUBLIC_*` args → push to ACR                            |
+| `push_redis_to_acr`       | build  | Default branch only, allow_failure | Mirror hardened `redis` from `dhi.io` to ACR                                    |
+| `scan_backend`            | scan   | Template job                       | Trivy scan for CRITICAL vulns → JSON report artifact                            |
+| `scan_frontend`           | scan   | Template job                       | Trivy scan for CRITICAL vulns → JSON report artifact                            |
+| `deploy_to_aks`           | deploy | Default branch only                | Azure CLI login → ingress/cert-manager/sealed-secrets/monitoring → Helm upgrade |
 
 ---
 
@@ -202,13 +204,6 @@ test  →  infra  →  build  →  scan  →  deploy
 - Create ArgoCD Application pointing to Helm chart
 - Configure auto-sync with self-heal and auto-prune
 - Separate CI (GitLab) from CD (ArgoCD)
-
-### Monitoring (Prometheus + Grafana) 🔄
-
-- Deploy `kube-prometheus-stack` via Helm
-- Kubernetes cluster & node dashboards
-- Application-level metrics
-- AlertManager integration
 
 ---
 
