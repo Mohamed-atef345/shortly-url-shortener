@@ -17,6 +17,7 @@ stages:
   - test
   - infra
   - build
+  - scan
   - deploy
 
 test_frontend:
@@ -136,8 +137,8 @@ build_and_push_frontend:
     # Build with NEXT_PUBLIC_* baked in at build time
     - >
       docker build
-      --build-arg NEXT_PUBLIC_API_URL=http://$DOMAIN
-      --build-arg NEXT_PUBLIC_BASE_URL=http://$DOMAIN
+      --build-arg NEXT_PUBLIC_API_URL=https://$DOMAIN
+      --build-arg NEXT_PUBLIC_BASE_URL=https://$DOMAIN
       -t $ACR_URL/shortly-frontend:$COMMIT_SHA
       -t $ACR_URL/shortly-frontend:latest
       ./frontend
@@ -145,6 +146,58 @@ build_and_push_frontend:
     - docker push $ACR_URL/shortly-frontend:latest
   after_script:
     - docker logout $ACR_URL
+
+scan_backend:
+  image:
+    name: aquasecurity/trivy:latest
+    entrypoint: [""]
+  stage: scan
+  variables:
+    TRIVY_USERNAME: $ARM_CLIENT_ID
+    TRIVY_PASSWORD: $ARM_CLIENT_SECRET
+  script:
+    # Fail pipeline on CRITICAL vulnerabilities
+    - trivy image
+      --exit-code 1
+      --severity CRITICAL
+      --ignore-unfixed
+      --format table
+      $ACR_URL/shortly-backend:$COMMIT_SHA
+    # Generate full report (all severities) as artifact
+    - trivy image
+      --format json
+      --output backend-trivy-report.json
+      $ACR_URL/shortly-backend:$COMMIT_SHA
+  artifacts:
+    paths:
+      - backend-trivy-report.json
+    expire_in: 1 week
+
+scan_frontend:
+  image:
+    name: aquasecurity/trivy:latest
+    entrypoint: [""]
+  stage: scan
+  variables:
+    TRIVY_USERNAME: $ARM_CLIENT_ID
+    TRIVY_PASSWORD: $ARM_CLIENT_SECRET
+  script:
+    # Fail pipeline on CRITICAL vulnerabilities
+    - trivy image
+      --exit-code 1
+      --severity CRITICAL
+      --ignore-unfixed
+      --format table
+      $ACR_URL/shortly-frontend:$COMMIT_SHA
+    # Generate full report (all severities) as artifact
+    - trivy image
+      --format json
+      --output frontend-trivy-report.json
+      $ACR_URL/shortly-frontend:$COMMIT_SHA
+  artifacts:
+    paths:
+      - frontend-trivy-report.json
+    expire_in: 1 week
 
 deploy_to_aks:
   image: mcr.microsoft.com/azure-cli:latest

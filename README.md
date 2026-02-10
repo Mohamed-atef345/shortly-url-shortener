@@ -2,19 +2,19 @@
 
 A production-grade URL shortener deployed on **Azure Kubernetes Service** with a full DevOps pipeline.
 
-> **Domain**: [myshortly.tech](http://myshortly.tech)
+> **Domain**: [myshortly.tech](https://myshortly.tech)
 
 ---
 
 ## Architecture
 
 ```
-Developer → GitLab CI (Build, Test, Scan) → Azure Container Registry
+Developer → GitLab CI (Test, Build, Scan) → Azure Container Registry
                                                       │
                                                       ▼
                                               Azure Kubernetes Service
                                            ┌─────────────────────────┐
-                                           │  NGINX Ingress          │
+                                           │  NGINX Ingress (TLS)    │
                                            │  ┌───────┐ ┌─────────┐  │
                                            │  │  /api │ │    /    │  │
                                            │  └───┬───┘ └────┬────┘  │
@@ -57,10 +57,11 @@ Developer → GitLab CI (Build, Test, Scan) → Azure Container Registry
 | **Secrets**            | Bitnami Sealed Secrets         | ✅ Implemented |
 | **Ingress**            | NGINX Ingress Controller       | ✅ Implemented |
 | **HPA**                | Horizontal Pod Autoscaler      | ✅ Implemented |
+| **Security Scanning**  | Trivy                          | ✅ Implemented |
+| **TLS**                | cert-manager + Let's Encrypt   | ✅ Implemented |
+| **Static IP**          | Terraform-managed Public IP    | ✅ Implemented |
 | **CI/CD (GitOps)**     | ArgoCD                         | 🔄 In Progress |
 | **Monitoring**         | Prometheus + Grafana           | 🔄 In Progress |
-| **Security Scanning**  | Trivy                          | 🔄 In Progress |
-| **TLS**                | cert-manager + Let's Encrypt   | 🔄 In Progress |
 
 ---
 
@@ -93,21 +94,24 @@ shortly_url_shortener/
 ├── DevOps/
 │   ├── terraform/              # Azure infrastructure
 │   │   ├── provider.tf         # AzureRM provider + remote backend
-│   │   ├── main.tf             # AKS, ACR, node pools, role assignment
+│   │   ├── main.tf             # AKS, ACR, node pools, role assignment, static IP
 │   │   ├── variables.tf        # K8s version, VM size, OS SKU
-│   │   └── outputs.tf          # Cluster name, ACR URL, kubeconfig
+│   │   └── outputs.tf          # Cluster name, ACR URL, kubeconfig, static IP
 │   │
-│   └── k8s/shorly/             # Helm chart
-│       ├── Chart.yaml
-│       ├── values.yaml         # Image tags, replicas, resources, ingress
-│       └── templates/
-│           ├── backend_deployment.yaml
-│           ├── frontend_deployment.yaml
-│           ├── redis.yaml
-│           ├── service.yaml    # ClusterIP services (frontend, backend, redis)
-│           ├── ingress.yaml    # NGINX ingress (/api → backend, / → frontend)
-│           ├── HPA.yaml        # Autoscaling (2–5 pods, CPU/memory triggers)
-│           └── sealed-secret.yaml
+│   └── k8s/
+│       ├── nginx-ingress-values.yaml  # NGINX Ingress Controller config
+│       └── shorly/             # Application Helm chart
+│           ├── Chart.yaml
+│           ├── values.yaml     # Image tags, replicas, resources, ingress, TLS
+│           └── templates/
+│               ├── backend_deployment.yaml
+│               ├── frontend_deployment.yaml
+│               ├── redis.yaml
+│               ├── service.yaml        # ClusterIP services
+│               ├── ingress.yaml        # NGINX ingress with TLS
+│               ├── cluster-issuer.yaml # Let's Encrypt ClusterIssuer
+│               ├── HPA.yaml            # Autoscaling (2–5 pods)
+│               └── sealed-secret.yaml
 │
 └── .gitlab-ci.yml              # CI/CD pipeline
 ```
@@ -143,6 +147,7 @@ shortly_url_shortener/
 | **Default Node Pool** | Autoscale 1–2 nodes, 3 AZs, `Standard_D2ads_v7`       |
 | **Worker Node Pool**  | Autoscale 1–6 nodes, 3 AZs, User mode                 |
 | **ACR**               | Standard SKU, `AcrPull` role assigned to AKS kubelet  |
+| **Static Public IP**  | Standard SKU, assigned to NGINX Ingress Controller    |
 | **TF State Backend**  | Azure Storage Account (`shortlytfstate/tfstate`)      |
 
 ### Kubernetes Resources
@@ -150,6 +155,8 @@ shortly_url_shortener/
 - **Deployments**: Backend (2 replicas), Frontend (2 replicas), Redis (1 replica)
 - **Services**: ClusterIP for all three
 - **Ingress**: NGINX — routes `/api` to backend, `/` to frontend on `myshortly.tech`
+- **TLS**: cert-manager + Let's Encrypt (auto-provisioned & auto-renewed)
+- **ClusterIssuer**: Let's Encrypt production with HTTP-01 solver
 - **HPA**: Frontend & backend scale 2→5 pods on CPU (60%) or memory (70%)
 - **Sealed Secrets**: All env vars encrypted with Bitnami Sealed Secrets
 - **Probes**: Liveness & readiness on all deployments
@@ -161,7 +168,7 @@ shortly_url_shortener/
 ### Stages
 
 ```
-test  →  infra  →  build  →  deploy
+test  →  infra  →  build  →  scan  →  deploy
 ```
 
 ### Workflow Rules
@@ -171,16 +178,18 @@ test  →  infra  →  build  →  deploy
 
 ### Jobs
 
-| Job                       | Stage  | Rules/Notes                        | Description                                                                      |
-| ------------------------- | ------ | ---------------------------------- | -------------------------------------------------------------------------------- |
-| `test_frontend`           | test   | Template job                       | `bun install` → `bun run lint` → `bun run typecheck` in `frontend/`              |
-| `test_backend`            | test   | Template job                       | `bun install` → `bun test` → `bun run lint` → `bun run typecheck` in `backend/`  |
-| `infra_plan`              | infra  | Always (per workflow rules)        | `terraform plan -out=tfplan` in `DevOps/terraform/`                              |
-| `infra_apply`             | infra  | Template job, needs `infra_plan`   | `terraform apply` then exports outputs to `DevOps/deploy.env` (dotenv)           |
-| `build_and_push_backend`  | build  | Template job                       | Docker build → push to ACR (`:$COMMIT_SHA` + `:latest`)                          |
-| `build_and_push_frontend` | build  | Template job                       | Docker build with `NEXT_PUBLIC_*` args → push to ACR                             |
-| `push_redis_to_acr`       | build  | Default branch only, allow_failure | Mirror hardened `redis` from `dhi.io` to ACR                                     |
-| `deploy_to_aks`           | deploy | Default branch only                | Azure CLI login → install `kubectl`/Helm → ingress/sealed-secrets → Helm upgrade |
+| Job                       | Stage  | Rules/Notes                        | Description                                                                                   |
+| ------------------------- | ------ | ---------------------------------- | --------------------------------------------------------------------------------------------- |
+| `test_frontend`           | test   | Template job                       | `bun install` → `bun run lint` → `bun run typecheck` in `frontend/`                           |
+| `test_backend`            | test   | Template job                       | `bun install` → `bun test` → `bun run lint` → `bun run typecheck` in `backend/`               |
+| `infra_plan`              | infra  | Always (per workflow rules)        | `terraform plan -out=tfplan` in `DevOps/terraform/`                                           |
+| `infra_apply`             | infra  | Template job, needs `infra_plan`   | `terraform apply` then exports outputs to `DevOps/deploy.env` (dotenv)                        |
+| `build_and_push_backend`  | build  | Template job                       | Docker build → push to ACR (`:$COMMIT_SHA` + `:latest`)                                       |
+| `build_and_push_frontend` | build  | Template job                       | Docker build with `NEXT_PUBLIC_*` args → push to ACR                                          |
+| `push_redis_to_acr`       | build  | Default branch only, allow_failure | Mirror hardened `redis` from `dhi.io` to ACR                                                  |
+| `scan_backend`            | scan   | Template job                       | Trivy scan for CRITICAL vulns → JSON report artifact                                          |
+| `scan_frontend`           | scan   | Template job                       | Trivy scan for CRITICAL vulns → JSON report artifact                                          |
+| `deploy_to_aks`           | deploy | Default branch only                | Azure CLI login → install `kubectl`/Helm → ingress/cert-manager/sealed-secrets → Helm upgrade |
 
 ---
 
@@ -200,18 +209,6 @@ test  →  infra  →  build  →  deploy
 - Kubernetes cluster & node dashboards
 - Application-level metrics
 - AlertManager integration
-
-### Security Scanning (Trivy) 🔄
-
-- Add Trivy scan stage to GitLab CI after image build
-- Fail pipeline on CRITICAL vulnerabilities
-- Generate scan reports as pipeline artifacts
-
-### TLS / HTTPS 🔄
-
-- Install cert-manager on AKS
-- Configure Let's Encrypt ClusterIssuer
-- Add TLS to Ingress for `myshortly.tech`
 
 ---
 
