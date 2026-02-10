@@ -17,3 +17,7 @@ output "kube_config" {
 output "aks_fqdn" {
   value = azurerm_kubernetes_cluster.shortly-aks.fqdn
 }
+
+output "ingress_ip" {
+  value = azurerm_public_ip.ingress.ip_address
+}

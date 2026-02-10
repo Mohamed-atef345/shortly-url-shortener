@@ -51,3 +51,9 @@ ingress:
 
 secrets:
   name_application: shortly-secrets
+
+clusterIssuer:
+  name: letsencrypt-prod
+  acmeEmail: example@gmail.com
+  privateKeySecretName: letsencrypt-prod-account-key
+  acmeServer: https://acme-v02.api.letsencrypt.org/directory
