@@ -18,6 +18,7 @@ stages:
   - infra
   - build
   - scan
+  - edit_manifests
   - deploy
 
 test_frontend:
@@ -199,11 +200,30 @@ scan_frontend:
       - frontend-trivy-report.json
     expire_in: 1 week
 
+push_to_repo:
+  image: alpine:latest
+  stage: edit_manifests
+  rules:
+    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
+  before_script:
+    - apk add --no-cache git yq
+    - git config --global user.email "$GITLAB_USER_EMAIL"
+    - git config --global user.name "$GITLAB_USER_NAME"
+    - git remote set-url origin https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.com/Mohamed_Atef_Abdo/shortly-url-shortner.git
+  script:
+    - yq -i ".backend.tag = \"$COMMIT_SHA\"" DevOps/k8s/shorly/values.yaml
+    - yq -i ".frontend.tag = \"$COMMIT_SHA\"" DevOps/k8s/shorly/values.yaml
+    - yq -i ".clusterIssuer.acmeEmail = \"$ACMEEMAIL\"" DevOps/k8s/shorly/values.yaml
+    - git add DevOps/k8s/shorly/values.yaml
+    - git commit -m "[skip ci] Update image tags to $COMMIT_SHA"
+    - git push origin HEAD:main --force-with-lease
+
 deploy_to_aks:
   image: mcr.microsoft.com/azure-cli:latest
   stage: deploy
   rules:
     - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
+  needs: ["push_to_repo"]
   before_script:
     - tdnf install -y tar git gawk wget sudo
     # Install kubectl — try dynamic version, fall back to pinned version
@@ -221,6 +241,7 @@ deploy_to_aks:
   script:
     # Install NGINX Ingress Controller
     - |
+      if ! kubectl get namespace ingress-nginx; then 
       helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
       helm repo update
       helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
@@ -229,8 +250,10 @@ deploy_to_aks:
         -f ./DevOps/k8s/nginx-ingress-values.yaml \
         --set controller.service.loadBalancerIP=$INGRESS_STATIC_IP \
         --set controller.service.annotations."service\.beta\.kubernetes\.io/azure-load-balancer-resource-group"=$RESOURCE_GROUP
+      fi
     # Install cert-manager for TLS certificate management
     - |
+      if ! kubectl get namespace cert-manager; then 
       curl -LO https://cert-manager.io/public-keys/cert-manager-keyring-2021-09-20-1020CF3C033D4F35BAE1C19E1226061C665DF13E.gpg
       helm upgrade --install \
       cert-manager oci://quay.io/jetstack/charts/cert-manager \
@@ -240,6 +263,7 @@ deploy_to_aks:
       --verify \
       --keyring ./cert-manager-keyring-2021-09-20-1020CF3C033D4F35BAE1C19E1226061C665DF13E.gpg \
       --set crds.enabled=true
+      fi
     # Install Sealed Secrets Controller (apply sealing key before first install)
     - |
       if ! helm list -n kube-system | grep -q sealed-secrets; then
@@ -252,6 +276,7 @@ deploy_to_aks:
       fi
     # Install Prometheus and Grafana
     - |
+      if ! kubectl get namespace monitoring; then 
       helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
       helm repo update
       helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
@@ -259,24 +284,22 @@ deploy_to_aks:
         --create-namespace \
         -f ./DevOps/k8s/prometheus-stack-values.yaml \
         --set grafana.adminPassword=$GRAFANA_ADMIN_PASSWORD
-    # Deploy the application with Helm
-    - >
-      helm upgrade --install shortly ./DevOps/k8s/shorly
-      --set backend.image=$ACR_URL/shortly-backend
-      --set backend.tag=$COMMIT_SHA
-      --set frontend.image=$ACR_URL/shortly-frontend
-      --set frontend.tag=$COMMIT_SHA
-      --set redis.image=$ACR_URL/redis
-      --set redis.tag=8-debian13-dev
-      --set clusterIssuer.acmeEmail=$ACMEEMAIL
-    # Verify deployment
-    - kubectl rollout status deployment/shortly-backend-deployment --timeout=120s
-    - kubectl rollout status deployment/shortly-frontend-deployment --timeout=120s
-    # Show summary
-    - kubectl get pods
-    - kubectl get svc
-    - kubectl get ingress
-    # Show the static IP for DNS configuration
+      fi
+
+    - |
+      if ! kubectl get namespace argocd; then 
+      kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+      kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+      kubectl rollout status deployment/argocd-server -n argocd --timeout=120s
+      curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+      sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+      rm argocd-linux-amd64
+      export OLD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+      argocd login argocd-server.argocd.svc.cluster.local --username admin --password $OLD_PASSWORD --insecure
+      argocd account update-password --account admin --current-password $OLD_PASSWORD --new-password $ARGO_ADMIN_PASSWORD
+      argocd app create -f ./DevOps/k8s/argocd/aplication.yaml
+      fi
+
     - |
       echo "============================================"
       echo "  STATIC IP: $INGRESS_STATIC_IP"

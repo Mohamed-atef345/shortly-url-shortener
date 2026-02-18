@@ -29,4 +29,13 @@ spec:
                 name: {{ .Values.frontend.name }}-service
                 port:
                   number: {{ .Values.service.frontend_port }}
-  
+    - host: argocd.{{ .Values.ingress.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 443
