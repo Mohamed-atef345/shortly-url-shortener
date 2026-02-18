@@ -63,4 +63,14 @@ resource "azurerm_public_ip" "ingress" {
   location            = azurerm_resource_group.shortly.location
   allocation_method   = "Static"
   sku                 = "Standard"
+  depends_on          = [azurerm_role_assignment.aks_network_contributor]
+}
+
+# Allow AKS to manage the public IP and LoadBalancer in this resource group
+# This fixes AuthorizationFailed errors and ensures clean terraform destroy
+resource "azurerm_role_assignment" "aks_network_contributor" {
+  principal_id         = azurerm_kubernetes_cluster.shortly-aks.identity[0].principal_id
+  role_definition_name = "Network Contributor"
+  scope                = azurerm_resource_group.shortly.id
+  depends_on           = [azurerm_kubernetes_cluster.shortly-aks]
 }

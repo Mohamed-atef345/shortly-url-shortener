@@ -301,7 +301,12 @@ deploy_to_aks:
       fi
 
     - |
+      ACTUAL_IP=$(kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "PENDING")
       echo "============================================"
-      echo "  STATIC IP: $INGRESS_STATIC_IP"
-      echo "  Point The DNS A record for $DOMAIN → $INGRESS_STATIC_IP"
+      echo "  CONFIGURED STATIC IP: $INGRESS_STATIC_IP"
+      echo "  ACTUAL INGRESS IP:    $ACTUAL_IP"
+      echo "  DOMAIN:               $DOMAIN"
+      echo "  Point DNS A record:   $DOMAIN → $INGRESS_STATIC_IP"
       echo "============================================"
+      kubectl get ingress -A
+      kubectl get pods -n default
