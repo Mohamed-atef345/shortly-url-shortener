@@ -1,33 +1,35 @@
 # Shortly — URL Shortener
 
-A production-grade URL shortener deployed on **Azure Kubernetes Service** with a full DevOps pipeline.
+A production-grade URL shortener deployed on **Azure Kubernetes Service** with a full DevOps pipeline using GitOps.
 
-> **Domain**: [myshortly.tech](https://myshortly.tech)
+> **Domain**: [myshortly.tech](https://myshortly.tech) | **ArgoCD**: [argocd.myshortly.tech](https://argocd.myshortly.tech) | **Grafana**: [grafana.myshortly.tech](https://grafana.myshortly.tech)
 
 ---
 
 ## Architecture
 
 ```
-Developer → GitLab CI (Test, Build, Scan) → Azure Container Registry
-                                                      │
-                                                      ▼
-                                              Azure Kubernetes Service
-                                           ┌─────────────────────────┐
-                                           │  NGINX Ingress (TLS)    │
-                                           │  ┌───────┐ ┌─────────┐  │
-                                           │  │  /api │ │    /    │  │
-                                           │  └───┬───┘ └────┬────┘  │
-                                           │      ▼          ▼       │
-                                           │  Backend    Frontend    │
-                                           │  (Elysia)   (Next.js)   │
-                                           │      │                  │
-                                           │      ▼                  │
-                                           │    Redis                │
-                                           └──────┼──────────────────┘
-                                                  │
-                                                  ▼
-                                           MongoDB Atlas (External)
+Developer → GitLab CI (Test, Build, Scan, Update values.yaml) → Git (main)
+                                                                       │
+                                                                ArgoCD (GitOps)
+                                                                       │
+                                                                       ▼
+                                                         Azure Kubernetes Service
+                                                      ┌─────────────────────────────┐
+                                                      │   NGINX Ingress (TLS)       │
+                                                      │  ┌───────┐ ┌─────────┐      │
+                                                      │  │  /api │ │    /    │      │
+                                                      │  └───┬───┘ └────┬────┘      │
+                                                      │      ▼          ▼           │
+                                                      │  Backend    Frontend        │
+                                                      │  (Elysia)   (Next.js)       │
+                                                      │      │                      │
+                                                      │      ▼                      │
+                                                      │    Redis                    │
+                                                      └──────┼──────────────────────┘
+                                                             │
+                                                             ▼
+                                                      MongoDB Atlas (External)
 ```
 
 ---
@@ -53,6 +55,7 @@ Developer → GitLab CI (Test, Build, Scan) → Azure Container Registry
 | **Kubernetes**         | Azure Kubernetes Service (AKS) | ✅ Implemented |
 | **IaC**                | Terraform                      | ✅ Implemented |
 | **CI/CD (Build)**      | GitLab CI                      | ✅ Implemented |
+| **GitOps (CD)**        | ArgoCD                         | ✅ Implemented |
 | **Package Manager**    | Helm                           | ✅ Implemented |
 | **Secrets**            | Bitnami Sealed Secrets         | ✅ Implemented |
 | **Ingress**            | NGINX Ingress Controller       | ✅ Implemented |
@@ -61,7 +64,6 @@ Developer → GitLab CI (Test, Build, Scan) → Azure Container Registry
 | **TLS**                | cert-manager + Let's Encrypt   | ✅ Implemented |
 | **Static IP**          | Terraform-managed Public IP    | ✅ Implemented |
 | **Monitoring**         | Prometheus + Grafana           | ✅ Implemented |
-| **CI/CD (GitOps)**     | ArgoCD                         | 🔄 In Progress |
 
 ---
 
@@ -70,51 +72,53 @@ Developer → GitLab CI (Test, Build, Scan) → Azure Container Registry
 ```
 shortly_url_shortener/
 ├── backend/                    # Bun + Elysia REST API
-│   ├── Dockerfile              # Multi-stage build (test → prod)
-│   ├── src/
-│   │   ├── index.ts            # App entrypoint + Swagger spec
-│   │   ├── config/             # DB, Redis, env config
-│   │   ├── controllers/        # Admin controller
-│   │   ├── middleware/          # Auth, RBAC, rate-limit, security
-│   │   ├── models/             # Mongoose models (User, Url)
-│   │   ├── routes/             # Auth, URL CRUD, redirect, admin
-│   │   ├── services/           # Redis, shortcode, URL services
-│   │   └── tests/              # Unit tests
-│   └── package.json
+│   ├── Dockerfile
+│   └── src/
+│       ├── index.ts
+│       ├── config/
+│       ├── controllers/
+│       ├── middleware/
+│       ├── models/
+│       ├── routes/
+│       ├── services/
+│       └── tests/
 │
 ├── frontend/                   # Next.js 16 app
-│   ├── Dockerfile              # Multi-stage build with build-args
-│   ├── src/
-│   │   ├── app/                # Pages (auth, dashboard, admin, redirect)
-│   │   ├── components/         # UI components (shadcn/ui)
-│   │   ├── lib/                # API client, config, utils
-│   │   └── providers/          # Auth, Query, Theme providers
-│   └── package.json
+│   ├── Dockerfile
+│   └── src/
+│       ├── app/
+│       ├── components/
+│       ├── lib/
+│       └── providers/
 │
 ├── DevOps/
-│   ├── terraform/              # Azure infrastructure
+│   ├── terraform/
 │   │   ├── provider.tf         # AzureRM provider + remote backend
-│   │   ├── main.tf             # AKS, ACR, node pools, role assignment, static IP
-│   │   ├── variables.tf        # K8s version, VM size, OS SKU
-│   │   └── outputs.tf          # Cluster name, ACR URL, kubeconfig, static IP
+│   │   ├── main.tf             # AKS, ACR, node pools, role assignments, static IP
+│   │   ├── variables.tf
+│   │   └── outputs.tf
 │   │
 │   └── k8s/
-│       ├── nginx-ingress-values.yaml      # NGINX Ingress Controller config
-│       ├── prometheus-stack-values.yaml   # Prometheus + Grafana config
-│       └── shorly/             # Application Helm chart
+│       ├── nginx-ingress-values.yaml
+│       ├── prometheus-stack-values.yaml
+│       ├── argocd/
+│       │   └── aplication.yaml            # ArgoCD Application manifest
+│       └── shorly/                        # Application Helm chart
 │           ├── Chart.yaml
-│           ├── values.yaml     # Image tags, replicas, resources, ingress, TLS
+│           ├── values.yaml
 │           └── templates/
 │               ├── backend_deployment.yaml
 │               ├── frontend_deployment.yaml
 │               ├── redis.yaml
-│               ├── service.yaml        # ClusterIP services
-│               ├── ingress.yaml        # NGINX ingress with TLS
-│               ├── cluster-issuer.yaml # Let's Encrypt ClusterIssuer
-│               ├── HPA.yaml            # Autoscaling (2–5 pods)
+│               ├── service.yaml
+│               ├── ingress.yaml           # App ingress (myshortly.tech)
+│               ├── argocd-ingress.yaml    # ArgoCD ingress (argocd.myshortly.tech)
+│               ├── clusterIssuer.yaml
+│               ├── HPA.yaml
 │               └── sealed-secret.yaml
 │
-└── .gitlab-ci.yml              # CI/CD pipeline
+├── Output/                     # Screenshots & demo videos
+└── .gitlab-ci.yml
 ```
 
 ---
@@ -141,21 +145,38 @@ shortly_url_shortener/
 
 ### Terraform Resources
 
-| Resource              | Config                                                |
-| --------------------- | ----------------------------------------------------- |
-| **Resource Group**    | `shortly-prod`, West Europe                           |
-| **AKS Cluster**       | Standard tier, OIDC enabled, system-assigned identity |
-| **Default Node Pool** | Autoscale 1–2 nodes, 3 AZs, `Standard_D2ads_v7`       |
-| **Worker Node Pool**  | Autoscale 1–6 nodes, 3 AZs, User mode                 |
-| **ACR**               | Standard SKU, `AcrPull` role assigned to AKS kubelet  |
-| **Static Public IP**  | Standard SKU, assigned to NGINX Ingress Controller    |
-| **TF State Backend**  | Azure Storage Account (`shortlytfstate/tfstate`)      |
+| Resource                | Config                                                       |
+| ----------------------- | ------------------------------------------------------------ |
+| **Resource Group**      | `shortly-prod`, West Europe                                  |
+| **AKS Cluster**         | Standard tier, OIDC enabled, system-assigned identity        |
+| **Default Node Pool**   | Autoscale 1–2 nodes, 3 AZs                                   |
+| **Worker Node Pool**    | Autoscale 1–6 nodes, 3 AZs, User mode                        |
+| **ACR**                 | Standard SKU, `AcrPull` role assigned to AKS kubelet         |
+| **Static Public IP**    | Standard SKU, assigned to NGINX Ingress Controller           |
+| **Network Contributor** | AKS identity granted `Network Contributor` on resource group |
+| **TF State Backend**    | Azure Storage Account (`shortlytfstate/tfstate`)             |
+
+> **Note**: The `Network Contributor` role is required for AKS to bind the static IP to the LoadBalancer and to ensure clean `terraform destroy` without IP conflict errors.
+
+### Manual Step (First Deploy Only)
+
+If the AKS cluster already exists without the role, run once:
+
+```bash
+AKS_IDENTITY=$(az aks show --resource-group shortly-prod --name shortly-aks --query "identity.principalId" -o tsv)
+
+az role assignment create \
+  --assignee $AKS_IDENTITY \
+  --role "Network Contributor" \
+  --scope /subscriptions/4dd86afc-5a1c-41bd-8c1b-ef92bf7c672b/resourceGroups/shortly-prod
+```
 
 ### Kubernetes Resources
 
 - **Deployments**: Backend (2 replicas), Frontend (2 replicas), Redis (1 replica)
 - **Services**: ClusterIP for all three
 - **Ingress**: NGINX — routes `/api` to backend, `/` to frontend on `myshortly.tech`
+- **ArgoCD Ingress**: NGINX — routes `argocd.myshortly.tech` to `argocd-server:80` (HTTP backend protocol)
 - **TLS**: cert-manager + Let's Encrypt (auto-provisioned & auto-renewed)
 - **ClusterIssuer**: Let's Encrypt production with HTTP-01 solver
 - **Monitoring**: Prometheus + Grafana at [grafana.myshortly.tech](https://grafana.myshortly.tech) with TLS
@@ -165,45 +186,48 @@ shortly_url_shortener/
 
 ---
 
-## CI/CD Pipeline (GitLab CI)
+## CI/CD Pipeline
 
 ### Stages
 
 ```
-test  →  infra  →  build  →  scan  →  deploy
+test  →  infra  →  build  →  scan  →  edit_manifests  →  deploy
 ```
 
-### Workflow Rules
+### GitOps Flow
 
-- Runs for **merge request pipelines**
-- Runs for **default branch** pushes
+```
+GitLab CI builds image → updates values.yaml with new SHA → commits [skip ci]
+                                                                   │
+                                                            ArgoCD detects change
+                                                                   │
+                                                            Syncs Helm chart to AKS
+```
 
 ### Jobs
 
-| Job                       | Stage  | Rules/Notes                        | Description                                                                     |
-| ------------------------- | ------ | ---------------------------------- | ------------------------------------------------------------------------------- |
-| `test_frontend`           | test   | Template job                       | `bun install` → `bun run lint` → `bun run typecheck` in `frontend/`             |
-| `test_backend`            | test   | Template job                       | `bun install` → `bun test` → `bun run lint` → `bun run typecheck` in `backend/` |
-| `infra_plan`              | infra  | Always (per workflow rules)        | `terraform plan -out=tfplan` in `DevOps/terraform/`                             |
-| `infra_apply`             | infra  | Template job, needs `infra_plan`   | `terraform apply` then exports outputs to `DevOps/deploy.env` (dotenv)          |
-| `build_and_push_backend`  | build  | Template job                       | Docker build → push to ACR (`:$COMMIT_SHA` + `:latest`)                         |
-| `build_and_push_frontend` | build  | Template job                       | Docker build with `NEXT_PUBLIC_*` args → push to ACR                            |
-| `push_redis_to_acr`       | build  | Default branch only, allow_failure | Mirror hardened `redis` from `dhi.io` to ACR                                    |
-| `scan_backend`            | scan   | Template job                       | Trivy scan for CRITICAL vulns → JSON report artifact                            |
-| `scan_frontend`           | scan   | Template job                       | Trivy scan for CRITICAL vulns → JSON report artifact                            |
-| `deploy_to_aks`           | deploy | Default branch only                | Azure CLI login → ingress/cert-manager/sealed-secrets/monitoring → Helm upgrade |
+| Job                       | Stage          | Description                                                                         |
+| ------------------------- | -------------- | ----------------------------------------------------------------------------------- |
+| `test_frontend`           | test           | `bun install` → lint → typecheck                                                    |
+| `test_backend`            | test           | `bun install` → test → lint → typecheck                                             |
+| `infra_plan`              | infra          | `terraform plan`                                                                    |
+| `infra_apply`             | infra          | `terraform apply` → exports outputs to `dotenv`                                     |
+| `build_and_push_backend`  | build          | Docker build → push to ACR (`:$SHA` + `:latest`)                                    |
+| `build_and_push_frontend` | build          | Docker build with `NEXT_PUBLIC_*` args → push to ACR                                |
+| `push_redis_to_acr`       | build          | Mirror hardened Redis from `dhi.io` to ACR                                          |
+| `scan_backend`            | scan           | Trivy CRITICAL scan → JSON report artifact                                          |
+| `scan_frontend`           | scan           | Trivy CRITICAL scan → JSON report artifact                                          |
+| `push_to_repo`            | edit_manifests | `yq` update `values.yaml` with new image tags + ACME email → `git commit [skip ci]` |
+| `deploy_to_aks`           | deploy         | Install NGINX / cert-manager / Sealed Secrets / Prometheus / ArgoCD (idempotent)    |
 
----
+### ArgoCD Application
 
-## Roadmap (In Progress)
+Configured in `DevOps/k8s/argocd/aplication.yaml`:
 
-### ArgoCD (GitOps) 🔄
-
-- Install ArgoCD on AKS
-- Connect to GitLab repository
-- Create ArgoCD Application pointing to Helm chart
-- Configure auto-sync with self-heal and auto-prune
-- Separate CI (GitLab) from CD (ArgoCD)
+- **Source**: `DevOps/k8s/shorly` (Helm chart in this repo)
+- **Auto-sync**: enabled with `prune`, `selfHeal`, `retry` (5 attempts)
+- **Sync options**: `CreateNamespace`, `PruneLast`, `ApplyOutOfSyncOnly`
+- **Revision history**: 10 rollbacks kept
 
 ---
 
@@ -211,21 +235,17 @@ test  →  infra  →  build  →  scan  →  deploy
 
 ```bash
 # Backend
-cd backend
-bun install
-bun run dev          # http://localhost:3002
+cd backend && bun install && bun run dev     # http://localhost:3002
 
 # Frontend
-cd frontend
-bun install
-bun run dev          # http://localhost:3000
+cd frontend && bun install && bun run dev    # http://localhost:3000
 ```
 
 ---
 
 ## Environment Variables
 
-Managed via **Sealed Secrets** in the cluster. Key variables:
+Managed via **Sealed Secrets** in the cluster.
 
 | Variable               | Description                     |
 | ---------------------- | ------------------------------- |
@@ -241,17 +261,29 @@ Managed via **Sealed Secrets** in the cluster. Key variables:
 | `PORT`                 | Backend port (3002)             |
 | `NODE_ENV`             | Environment (production)        |
 
+---
+
 ## Screenshots
 
-### Homepage
+### Application
 
 ![Homepage](Output/homepage.png)
+
+### ArgoCD — GitOps Dashboard
+
+![ArgoCD Application Tree](Output/argocd1.png)
+![ArgoCD Sync Status](Output/argocd2.png)
+![ArgoCD Resource Health](Output/argocd3.png)
 
 ### Grafana Monitoring
 
 ![Grafana Dashboard - Cluster Overview](Output/grafana1.png)
 ![Grafana Dashboard - Pod Metrics](Output/grafana2.png)
 
-### Demo
+---
 
-## [🎬 Watch the demo video](Output/Demo.mp4)
+## Demo
+
+### [🎬 Watch App Demo](Output/Demo.mp4)
+
+### [🎬 Watch ArgoCD Demo](Output/argocd%20demo.mp4)
