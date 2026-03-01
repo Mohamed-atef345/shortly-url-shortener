@@ -10,7 +10,7 @@ A production-grade, cloud-native URL shortener built with a modern TypeScript st
 
 ## Architecture
 
-![Shortly Architecture](Output/architecture.jpeg)
+![Shortly Architecture](Output/architecture.png)
 
 ---
 
